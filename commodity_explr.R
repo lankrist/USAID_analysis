@@ -1,6 +1,6 @@
 #2015-2017 commodity data 
 library(ggplot2)
-
+library(scales) #pretty_breaks()
 commodity <- read.csv("~/USAID_Internship2017/dataset/country_commodity_20170718.csv", stringsAsFactors=FALSE)
 
 names(commodity)
@@ -15,7 +15,8 @@ dim(commodity)
 #convert dollar character to numeric
 commodity$PO.Line.Item.Cost = as.numeric(gsub('\\$|,', '', commodity$PO.Line.Item.Cost))
 #convert year to factor
-commodity$PO.Received.Year = as.factor(commodity$PO.Received.Year)
+commodity$Country = as.factor(commodity$Country)
+commodity$PO.Received.Year = as.integer(commodity$PO.Received.Year)
 
 #BLANK THEME
 blank_theme = theme_minimal() + 
@@ -57,10 +58,19 @@ sp + blank_theme + labs(title = paste("2015-2017 Commodity Unit Cost by Product 
 #show count on products
 
 #Stacked area chart
-sac = ggplot(commodity, aes(group = PO.Received.Year, x = PO.Received.Year, y = PO.Line.Item.Cost, fill = Country))
+comsac = aggregate(PO.Line.Item.Cost~PO.Received.Year+Country, commodity, sum)
+comsa = expand.grid(unique(commodity$PO.Received.Year), levels(commodity$Country),0)
+colnames(comsa) = names(comsac)
+com = rbind(comsac, comsa)
+coms = aggregate(PO.Line.Item.Cost~PO.Received.Year+Country, com, sum)
 
-sac + geom_area()
+sac = ggplot(coms, aes(x = PO.Received.Year, y = PO.Line.Item.Cost,
+                            fill = Country))
 
-(commodity$PO.Received.Year)
+sac + geom_area()+
+  blank_theme+labs(x = "Year", y = "Expense", 
+                   title = "Commodity Cost by Country from 2015-2017")+
+  scale_x_continuous(breaks = unique(coms$PO.Received.Year))
+
 
 
