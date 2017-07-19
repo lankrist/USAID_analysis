@@ -18,6 +18,21 @@ commodity$PO.Line.Item.Cost = as.numeric(gsub('\\$|,', '', commodity$PO.Line.Ite
 commodity$Country = as.factor(commodity$Country)
 commodity$PO.Received.Year = as.integer(commodity$PO.Received.Year)
 
+#encode new category
+commodity$commodity.category = "NA"
+commodity[grepl("Condom", commodity$Global.Product),"commodity.category"] = "Condoms"
+commodity[grepl("Tablet", commodity$Global.Product), "commodity.category"] = "Drug" 
+commodity[grepl("mg/mL", commodity$Global.Product), "commodity.category"] = "Drug" 
+commodity[grepl("Pellets", commodity$Global.Product), "commodity.category"] = "Drug" 
+commodity[grepl("Kit", commodity$Global.Product), "Global.Product"]
+commodity[grepl("MC Kit", commodity$Global.Product), "commodity.category"] = "VMMC"
+
+commodity[grepl("COBAS", commodity$Global.Product), "commodity.category"] = "COBAS"
+commodity[grepl("mSystems", commodity$Global.Product), "commodity.category"] = "mSystems"
+
+
+commodity[commodity$commodity.category == "NA", "Global.Product"]
+
 #BLANK THEME
 blank_theme = theme_minimal() + 
   theme(
@@ -40,7 +55,6 @@ bp = ggplot(commodity, aes(x = "", y = PO.Line.Item.Cost, fill = Product.Line))+
 bp
 
 pie = bp + coord_polar(theta = "y", start = 0)
-pie
 
 pie + scale_fill_brewer("Commodity Expense") + blank_theme +
   theme(axis.text.x =element_blank())+
@@ -70,7 +84,7 @@ sac = ggplot(coms, aes(x = PO.Received.Year, y = PO.Line.Item.Cost,
 sac + geom_area()+
   blank_theme+labs(x = "Year", y = "Expense", 
                    title = "Commodity Cost by Country from 2015-2017")+
-  scale_x_continuous(breaks = unique(coms$PO.Received.Year))
+  scale_x_continuous(breaks = unique(coms$PO.Received.Year)) #displays only integers
 
 
 
