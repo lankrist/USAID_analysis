@@ -3,29 +3,40 @@ library(ggplot2)
 library(scales) #pretty_breaks()
 commodity <- read.csv("~/USAID_Internship2017/dataset/country_commodity_TO1_SO.csv", stringsAsFactors=FALSE)
 
+colnames(commodity) = c("Country", "Supplier", "Supplying Method", "Stage", "Product",
+                        "Fiscal Year", "Quantity", "Total Cost")
 names(commodity)
-# "Country"                "Task.Order"             "Information.Provider"  
-# "Program"                "Supply.Chain.Framework" "Product.Line"          
-# "SO.Supplier"            "SO.Pipeline.Stage"      "Global.Product"        
-# "PO.Received.Year"       "PO.Received.Date"       "PO.Line.Item.Cost"     
-# "PO.Line.Item.Qty"       "PO.Line.Item.Unit.Cost"
+
 View(commodity)
 dim(commodity)
 
 #convert dollar character to numeric
-commodity$PO.Line.Item.Cost = as.numeric(gsub('\\$|,', '', commodity$PO.Line.Item.Cost))
+commodity$`Total Cost` = as.numeric(gsub('\\$|,', '', commodity$`Total Cost`))
 #convert year to factor
 commodity$Country = as.factor(commodity$Country)
-commodity$PO.Received.Year = as.integer(commodity$PO.Received.Year)
+commodity$`Fiscal Year`= as.integer(commodity$`Fiscal Year`)
 
 #encode new category
-commodity$commodity.category = "NA"
-commodity[grepl("Condom", commodity$Global.Product),"commodity.category"] = "Condoms"
-commodity[grepl("Tablet", commodity$Global.Product), "commodity.category"] = "Drug" 
-commodity[grepl("mg/mL", commodity$Global.Product), "commodity.category"] = "Drug" 
-commodity[grepl("Pellets", commodity$Global.Product), "commodity.category"] = "Drug" 
-commodity[grepl("HIV", commodity$Global.Product), "Global.Product"]
-commodity[grepl("MC Kit", commodity$Global.Product), "commodity.category"] = "VMMC"
+commodity$commodity.type = "NA"
+
+commodity[grepl("Condom", commodity$Product),"commodity.type"] = "Condoms"
+commodity[grepl("Lubricant", commodity$Product),"commodity.type"] = "Condoms"
+
+commodity[grepl("Tablet", commodity$Product), "Product"] 
+commodity[grepl("Tablet", commodity$Product), "commodity.type"] = "Drug" 
+commodity[grepl("mg/mL", commodity$Product), "commodity.type"] = "Drug" 
+commodity[grepl("Pellets", commodity$Product), "commodity.type"] = "Drug" 
+
+table(commodity$commodity.type)
+
+commodity[grepl("HIV", commodity$Product), "Product"]
+
+commodity[grepl("MC Kit", commodity$Product), "commodity.type"] = "VMMC"
+
+
+
+
+
 
 commodity[grepl("Pallet", commodity$Global.Product), "commodity.category"] = "Pallet"
 commodity[grepl("COBAS", commodity$Global.Product), "Global.Product"] = "COBAS"
