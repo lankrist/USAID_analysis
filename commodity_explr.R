@@ -22,28 +22,32 @@ commodity$commodity.type = "NA"
 commodity[grepl("Condom", commodity$Product),"commodity.type"] = "Condoms"
 commodity[grepl("Lubricant", commodity$Product),"commodity.type"] = "Condoms"
 
-commodity[grepl("Tablet", commodity$Product), "Product"] 
-commodity[grepl("Tablet", commodity$Product), "commodity.type"] = "Drug" 
-commodity[grepl("mg/mL", commodity$Product), "commodity.type"] = "Drug" 
-commodity[grepl("Pellets", commodity$Product), "commodity.type"] = "Drug" 
-
-table(commodity$commodity.type)
-
-commodity[grepl("HIV", commodity$Product), "Product"]
+commodity[grepl("HIV 1/2", commodity$Product), "commodity.type"] = "HIV RTK"
 
 commodity[grepl("MC Kit", commodity$Product), "commodity.type"] = "VMMC"
 
+arv_list = c("Ritonavir", "Lamivudine", "Zidovudine", "Nevirapine", "Abacavir",
+              "Atazanavir", "Darunavir", "Efavirenz", "Tenofovir", "Emtricitabine",
+              "Stavudine", "Lopinavir", "Saquinavir",  "Didanosine", "Etravirine", 
+             "Dolutegravir", "Saquinavir", "Raltegravir", "Cobicistat")
+
+drug=sapply(arv_list, function(arv_list, y) grepl(arv_list, commodity$Product))
+colSums(sapply(arv_list, function(arv_list, y) grepl(arv_list, commodity$Product)))
+dim(drug)
+commodity[rowSums(drug)>=1, "commodity.type"] = "ARV" 
 
 
 
+# Laboratory ############NEEDS more specificity and accuracy
+commodity[grepl("Reagent", commodity$Product), "commodity.type"] = "Lab" 
 
+table(commodity$commodity.type)
 
-commodity[grepl("Pallet", commodity$Global.Product), "commodity.category"] = "Pallet"
-commodity[grepl("COBAS", commodity$Global.Product), "Global.Product"] = "COBAS"
-commodity[grepl("mSystems", commodity$Global.Product), "commodity.category"] = "mSystems"
+# Contraceptives
+commodity[grepl("IUD", commodity$Product), "commodity.type"] = "Contraceptives"
+commodity[grepl("Contraceptive", commodity$Product), "commodity.type"] = "Contraceptives"
 
-
-commodity[commodity$commodity.category == "Drug", "Global.Product"]
+commodity[commodity$commodity.type == "NA", "Product"]
 
 #BLANK THEME
 blank_theme = theme_minimal() + 
@@ -59,13 +63,13 @@ blank_theme = theme_minimal() +
 dev.new(width = 8, height = 8)
 
 #Order data (not necessary)
-commodity = commodity[order(commodity$Product.Line),]
+commodity = commodity[order(commodity$commodity.type),]
 
-total = sum(commodity$PO.Line.Item.Cost)
-total2017 = sum(commodity[commodity$PO.Received.Year == 2017,"PO.Line.Item.Cost"])
+total = sum(commodity$`Total Cost`)
+total2017 = sum(commodity[commodity$`Fiscal Year` == 2017,"PO.Line.Item.Cost"])
 
 #Pie chart that shows how much commodities cost by profuct line
-bp = ggplot(commodity, aes(x = "", y = PO.Line.Item.Cost, fill = commodity.category))+
+bp = ggplot(commodity, aes(x = "", y = `Total Cost`, fill = commodity.type))+
   geom_bar(width = 1, stat = "identity")
 bp
 
@@ -73,18 +77,18 @@ pie = bp + coord_polar(theta = "y", start = 0)
 
 pie + scale_fill_brewer("Commodity Expense") + blank_theme +
   theme(axis.text.x =element_blank())+
-  labs(title = '2015-2017 Commodity Expense by Product Line 20170718 BI&A')
+  labs(title = '2013-2017 Commodity Expense by Category BI&A')
 
 dev.new()
 #Box plot that shows unit cost of commodities by direct drop vs warehouse
-threshold = 100
-com2 = commodity[commodity$PO.Line.Item.Unit.Cost <= threshold,]
+threshold = 1000
+com2 = commodity[(commodity$`Total Cost`/commodity$Quantity) <= threshold,]
 
-sp = ggplot(com2, aes(x = commodity.category, y = PO.Line.Item.Unit.Cost, 
+sp = ggplot(com2, aes(x = commodity.type, y = (commodity$`Total Cost`/commodity$Quantity), 
                       color = Supply.Chain.Framework, shape = Supply.Chain.Framework))+
   geom_boxplot()
 
-sp + blank_theme + labs(title = paste("2015-2017 Commodity Unit Cost by Product Line (under $", threshold, ")"))
+sp + blank_theme + labs(title = paste("2013-2017 Commodity Unit Cost by Product Line (under $", threshold, ")"))
 #show count on products
 commodity[grepl("NA", commodity$commodity.category), "Global.Product"]
 
