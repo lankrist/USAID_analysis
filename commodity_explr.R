@@ -2,6 +2,8 @@
 library(ggplot2)
 library(scales) #pretty_breaks()
 commodity <- read.csv("~/USAID_Internship2017/dataset/country_commodity_TO1_SO.csv", stringsAsFactors=FALSE)
+category = read.csv("dataset/product_category.csv", stringsAsFactors = F)
+
 
 colnames(commodity) = c("Country", "Supplier", "Supplying Method", "Stage", "Product",
                         "Fiscal Year", "Quantity", "Total Cost")
@@ -15,6 +17,7 @@ commodity$`Total Cost` = as.numeric(gsub('\\$|,', '', commodity$`Total Cost`))
 #convert year to factor
 commodity$Country = as.factor(commodity$Country)
 commodity$`Fiscal Year`= as.integer(commodity$`Fiscal Year`)
+commodity$Quantity= as.numeric(gsub("\\,","",commodity$Quantity))
 
 #encode new category
 commodity$commodity.type = "NA"
@@ -66,7 +69,7 @@ dev.new(width = 8, height = 8)
 commodity = commodity[order(commodity$commodity.type),]
 
 total = sum(commodity$`Total Cost`)
-total2017 = sum(commodity[commodity$`Fiscal Year` == 2017,"PO.Line.Item.Cost"])
+total2017 = sum(commodity[commodity$`Fiscal Year` == 2017,"Total Cost"])
 
 #Pie chart that shows how much commodities cost by profuct line
 bp = ggplot(commodity, aes(x = "", y = `Total Cost`, fill = commodity.type))+
@@ -81,11 +84,12 @@ pie + scale_fill_brewer("Commodity Expense") + blank_theme +
 
 dev.new()
 #Box plot that shows unit cost of commodities by direct drop vs warehouse
-threshold = 1000
+threshold = 500
 com2 = commodity[(commodity$`Total Cost`/commodity$Quantity) <= threshold,]
-
-sp = ggplot(com2, aes(x = commodity.type, y = (commodity$`Total Cost`/commodity$Quantity), 
-                      color = Supply.Chain.Framework, shape = Supply.Chain.Framework))+
+dim(com2);dim(commodity)
+#Quantitry is factor?
+sp = ggplot(com2, aes(x = com2$commodity.type, y = (com2$`Total Cost`/com2$Quantity), 
+                      color = com2$`Supplying Method`, shape = com2$`Supplying Method`))+
   geom_boxplot()
 
 sp + blank_theme + labs(title = paste("2013-2017 Commodity Unit Cost by Product Line (under $", threshold, ")"))
@@ -94,20 +98,30 @@ commodity[grepl("NA", commodity$commodity.category), "Global.Product"]
 
 #Stacked area chart
 dev.new()
-comsac = aggregate(PO.Line.Item.Cost~PO.Received.Year+Country, commodity, sum)
-comsa = expand.grid(unique(commodity$PO.Received.Year), levels(commodity$Country),0)
+comsac = aggregate(`Total Cost`~ `Fiscal Year`+Country, commodity, sum)
+comsa = expand.grid(unique(commodity$`Fiscal Year`), levels(commodity$Country),0)
 colnames(comsa) = names(comsac)
 com = rbind(comsac, comsa)
-coms = aggregate(PO.Line.Item.Cost~PO.Received.Year+Country, com, sum)
+coms = aggregate(`Total Cost`~`Fiscal Year`+Country, com, sum)
 
-sac = ggplot(coms, aes(x = PO.Received.Year, y = PO.Line.Item.Cost,
+sac = ggplot(coms, aes(x = `Fiscal Year`, y = `Total Cost`,
                             fill = Country))
 
 sac + geom_area()+
   blank_theme+labs(x = "Year", y = "Expense", 
                    title = "Commodity Cost by Country from 2015-2017")+
-  scale_x_continuous(breaks = unique(coms$PO.Received.Year)) #displays only integers
+  scale_x_continuous(breaks = unique(coms$`Fiscal Year`)) #displays only integers
 
-countryTotal= aggregate(PO.Line.Item.Cost~Country, com, sum)
-ct = head(countryTotal[order(-countryTotal$PO.Line.Item.Cost),])
+#sum cost by country
+countryTotal= aggregate(`Total Cost`~Country, com, sum)
+ct = head(countryTotal[order(-countryTotal$`Total Cost`),])
+
+aggregate(`Total Cost`~`Fiscal Year`, commodity, sum)
+# Fiscal   Year Total Cost
+# 1        2013  109530098
+# 2        2014   98184438
+# 3        2015  106402040
+# 4        2016  104234723
+# 5        2017 1376384298
+
 #join with commodity data frame
