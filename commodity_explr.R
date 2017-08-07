@@ -1,16 +1,23 @@
 #2015-2017 commodity data 
 library(ggplot2)
 library(scales) #pretty_breaks()
+
 commodity <- read.csv("~/USAID_Internship2017/dataset/country_commodity_TO1_SO.csv", stringsAsFactors=FALSE)
-category = read.csv("dataset/product_category.csv", stringsAsFactors = F)
+category = read.csv("dataset/product_categories.csv", stringsAsFactors = F)
 
 
 colnames(commodity) = c("Country", "Supplier", "Supplying Method", "Stage", "Product",
                         "Fiscal Year", "Quantity", "Total Cost")
+
+colnames(category) = c("Categories", "Product")
 names(commodity)
 
 View(commodity)
 dim(commodity)
+
+# returns string w/o trailing whitespace   // category procudts have whitespaces in the end
+trim.trailing <- function (x) sub("\\s+$", "", x)
+category$Product=  trim.trailing(category$Product)
 
 #convert dollar character to numeric
 commodity$`Total Cost` = as.numeric(gsub('\\$|,', '', commodity$`Total Cost`))
@@ -19,7 +26,7 @@ commodity$Country = as.factor(commodity$Country)
 commodity$`Fiscal Year`= as.integer(commodity$`Fiscal Year`)
 commodity$Quantity= as.numeric(gsub("\\,","",commodity$Quantity))
 
-#encode new category
+#Encode new category  OTHER OPTION is merge with catgories from ARTMIS
 commodity$commodity.type = "NA"
 
 commodity[grepl("Condom", commodity$Product),"commodity.type"] = "Condoms"
@@ -39,8 +46,6 @@ colSums(sapply(arv_list, function(arv_list, y) grepl(arv_list, commodity$Product
 dim(drug)
 commodity[rowSums(drug)>=1, "commodity.type"] = "ARV" 
 
-
-
 # Laboratory ############NEEDS more specificity and accuracy
 commodity[grepl("Reagent", commodity$Product), "commodity.type"] = "Lab" 
 
@@ -52,7 +57,13 @@ commodity[grepl("Contraceptive", commodity$Product), "commodity.type"] = "Contra
 
 commodity[commodity$commodity.type == "NA", "Product"]
 
-#BLANK THEME
+#Join with categories
+commodity2= merge(commodity, category, by = "Product")
+commodity2 = unique(commodity2) #exclueds a lot of commodites without pairs
+dim(commodity2)
+names(commodity2)
+
+ #BLANK THEME
 blank_theme = theme_minimal() + 
   theme(
     axis.title.x = element_blank(),
@@ -66,13 +77,13 @@ blank_theme = theme_minimal() +
 dev.new(width = 8, height = 8)
 
 #Order data (not necessary)
-commodity = commodity[order(commodity$commodity.type),]
+commodity2 = commodity2[order(commodity2$Categories),]
 
-total = sum(commodity$`Total Cost`)
-total2017 = sum(commodity[commodity$`Fiscal Year` == 2017,"Total Cost"])
+total = sum(commodity2$`Total Cost`)
+total2017 = sum(commodity2[commodity2$`Fiscal Year` == 2017,"Total Cost"])
 
 #Pie chart that shows how much commodities cost by profuct line
-bp = ggplot(commodity, aes(x = "", y = `Total Cost`, fill = commodity.type))+
+bp = ggplot(commodity2, aes(x = "", y = `Total Cost`, fill = Categories))+
   geom_bar(width = 1, stat = "identity")
 bp
 
@@ -85,11 +96,11 @@ pie + scale_fill_brewer("Commodity Expense") + blank_theme +
 dev.new()
 #Box plot that shows unit cost of commodities by direct drop vs warehouse
 threshold = 500
-com2 = commodity[(commodity$`Total Cost`/commodity$Quantity) <= threshold,]
-dim(com2);dim(commodity)
+com2 = commodity2[(commodity2$`Total Cost`/commodity2$Quantity) <= threshold,]
+dim(com2);dim(commodity2)
 #Quantitry is factor?
-sp = ggplot(com2, aes(x = com2$commodity.type, y = (com2$`Total Cost`/com2$Quantity), 
-                      color = com2$`Supplying Method`, shape = com2$`Supplying Method`))+
+sp = ggplot(com2, aes(x = Categories, y = (`Total Cost`/Quantity), 
+                      color = `Supplying Method`, shape = `Supplying Method`))+
   geom_boxplot()
 
 sp + blank_theme + labs(title = paste("2013-2017 Commodity Unit Cost by Product Line (under $", threshold, ")"))
@@ -98,8 +109,8 @@ commodity[grepl("NA", commodity$commodity.category), "Global.Product"]
 
 #Stacked area chart
 dev.new()
-comsac = aggregate(`Total Cost`~ `Fiscal Year`+Country, commodity, sum)
-comsa = expand.grid(unique(commodity$`Fiscal Year`), levels(commodity$Country),0)
+comsac = aggregate(`Total Cost`~ `Fiscal Year`+Country, commodity2, sum)
+comsa = expand.grid(unique(commodity2$`Fiscal Year`), levels(commodity2$Country),0)
 colnames(comsa) = names(comsac)
 com = rbind(comsac, comsa)
 coms = aggregate(`Total Cost`~`Fiscal Year`+Country, com, sum)
@@ -109,7 +120,7 @@ sac = ggplot(coms, aes(x = `Fiscal Year`, y = `Total Cost`,
 
 sac + geom_area()+
   blank_theme+labs(x = "Year", y = "Expense", 
-                   title = "Commodity Cost by Country from 2015-2017")+
+                   title = "Commodity Cost by Country from 2013-2017")+
   scale_x_continuous(breaks = unique(coms$`Fiscal Year`)) #displays only integers
 
 #sum cost by country
