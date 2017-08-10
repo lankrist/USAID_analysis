@@ -11,7 +11,7 @@ dat=read.csv(file = "../dataset/ARV/USAID GHSC Eligible ARV Product List (SHARED
 names(dat)
 commodity_list = unique(dat$Active.Ingredients); commodity_list[18]
 
-#SELECTS commodity (will add in drop down menu, and set default commodity)
+#SELECT COMMODITY (will add in drop down menu, and set default commodity)
 commodity_information = dat[dat$Active.Ingredients==commodity_list[18], ]
 
 order = read.csv("../dataset/ARTMIS/RO_history_20170809.csv")
@@ -19,7 +19,7 @@ commodity_order=order[grepl("Efavirenz/Lamivudine/Tenofovir", order$Item.Descrip
 
 
 #GEOLOCATIONS
-#is there a way to convert country lovations to coordinates?
+#is there a way to convert address locations to coordinates?
 #simulated###############33    
 commodity_information$Latitude=runif(nrow(commodity_information),-90, 90)
 commodity_information$Longitude=runif(nrow(commodity_information), -180, 180)
@@ -41,15 +41,18 @@ status_c = status_[-1,]
 status_c$country = rownames(status_c)
 
 
-#Order dates  //////////needs to fix##########
-as.Date(order$Estimated.Delivery.Date, format = "%b $d %Y") - 
-  order$Agreed.Delivery.Date
+#Order dates
+fact_to_date = function(fact_val){
+  return(as.Date(as.character(fact_val), format = "%Y/%m/%d"))
+}
+commodity_order[,c(13:17)] = as.data.frame(lapply(commodity_order[,c(13:17)], 
+                                                  fact_to_date))
 
 #Converting factos to numerics
 fact_to_num = function(fact_val){
   return(as.numeric(gsub(",","",as.character(fact_val))))
 }
-order$Line.Total= fact_to_num(order$Line.Total)
+commodity_order$Line.Total= fact_to_num(commodity_order$Line.Total)
 
 #spaltialpolugondataframe ####consider utility of loading all information to single table
 commodity_select = merge(countries, status_c, by.x= "ADMIN", by.y = "country")
