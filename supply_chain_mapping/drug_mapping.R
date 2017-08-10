@@ -3,6 +3,7 @@ library(magrittr)  #%>%  operator for pipe entry
 library(shiny) #for webapp
 library(leaflet) #for map interface
 library(rgdal) #country shapes
+library(RJSONIO) #function to convert address to coordinates
 
 setwd("/Documents/USAID_Internship2017/supply_chain_management/")
 countries <- readOGR("../dataset/countries.geojson", "OGRGeoJSON")
@@ -17,13 +18,31 @@ commodity_information = dat[dat$Active.Ingredients==commodity_list[18], ]
 order = read.csv("../dataset/ARTMIS/RO_history_20170809.csv")
 commodity_order=order[grepl("Efavirenz/Lamivudine/Tenofovir", order$Item.Description),]
 
-
 #GEOLOCATIONS
-#is there a way to convert address locations to coordinates?
-#simulated###############33    
+commodity_information$FPP.Manufacturing.Site = gsub("\n"," ",commodity_information$FPP.Manufacturing.Site)
+geocodeAdddress <- function(address) {
+  #require(RJSONIO)
+  url <- "http://maps.google.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, "&sensor=false", sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+gsub(".*,","",gsub(".*&", "", commodity_information$FPP.Manufacturing.Site))
+
+geocodeAdddress()
+
+
+
+
 commodity_information$Latitude=runif(nrow(commodity_information),-90, 90)
 commodity_information$Longitude=runif(nrow(commodity_information), -180, 180)
-
 
 #DATA FORMATTING  ##automate#################
 status= table(commodity_order$Destination.Country, commodity_order$Status)
@@ -41,14 +60,14 @@ status_c = status_[-1,]
 status_c$country = rownames(status_c)
 
 
-#Order dates
+#Converting factors to order dates
 fact_to_date = function(fact_val){
   return(as.Date(as.character(fact_val), format = "%Y/%m/%d"))
 }
 commodity_order[,c(13:17)] = as.data.frame(lapply(commodity_order[,c(13:17)], 
                                                   fact_to_date))
 
-#Converting factos to numerics
+#Converting factors to numerics
 fact_to_num = function(fact_val){
   return(as.numeric(gsub(",","",as.character(fact_val))))
 }
@@ -56,7 +75,7 @@ commodity_order$Line.Total= fact_to_num(commodity_order$Line.Total)
 
 #spaltialpolugondataframe ####consider utility of loading all information to single table
 commodity_select = merge(countries, status_c, by.x= "ADMIN", by.y = "country")
-commodity_select$activity = rowSums(cs[,c(-1,-2)])
+commodity_select$activity = rowSums(cs[,c(-1,-2)]) #exclude non-numeric values
 cs = as.data.frame(commodity_select)
 
 #MAP ATTRIBUTES
@@ -91,19 +110,37 @@ pal <- colorNumeric(
 #MAP
 m = leaflet(commodity_select) %>% addTiles()
 
-m %>% setView(lng = 25, lat = -10, zoom = 2) %>%
-  addMarkers(data=commodity_information,lng = ~Longitude, lat=~Latitude, 
-             popup = "Manufacturer", label = ~Supplier,
-             icon = drugIcons, group = "Location") %>%
+m %>% setView(lng = 25, lat = -10, zoom = 1) %>%
+  addEasyButton(easyButton(
+    icon="fa-globe", title="Zoom to World View",
+    onClick=JS("function(btn, map){ map.setZoom(1); }"))) %>%
+  # Base groups
   addPolygons(stroke = FALSE, smoothFactor = 0.2, 
               fillOpacity = 1, color = ~pal(commodity_select$activity), 
               label = commodity_select$ADMIN,
               popup = paste("Delivered Orders:", commodity_select$`Shipment Delivered` , "<br>",
-                            "Requested Orders:", commodity_select$`Order Received`, "<br>")) %>%
+                            "Requested Orders:", commodity_select$`Order Received`, "<br>"),
+              highlight = highlightOptions(
+                weight = 5,
+                color = "#888",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              group = "Orders") %>%
   addLegend("bottomright", pal = pal, values = ~activity,
             title = "Number of Orders",
-            opacity = 1
+            opacity = 1)%>%
+  #Overlay groups
+  addMarkers(data=commodity_information,lng = ~Longitude, lat=~Latitude, 
+             popup = "Manufacturer", label = ~Supplier,
+             icon = drugIcons, group = "Manufacturer") %>%
+  # Layers control
+  addLayersControl(
+    baseGroups = c("Orders"),
+    overlayGroups = c("Manufacturer"),
+    options = layersControlOptions(collapsed = FALSE)
   )
+
+
 
 
 
