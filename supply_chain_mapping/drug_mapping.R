@@ -34,15 +34,17 @@ geocodeAdddress <- function(address) {
   Sys.sleep(0.2)  # API only allows 5 requests per second
   out
 }
-gsub(".*,","",gsub(".*&", "", commodity_information$FPP.Manufacturing.Site))
+address_string =gsub(".*&", "", commodity_information$FPP.Manufacturing.Site)
+#still has to FIX
+address_string = gsub("^.*?\\,", "",
+                         gsub("^.*?\\,", "",
+                              gsub("^.*?\\,","",address_string)))
 
-geocodeAdddress()
+address = lapply(address_string, geocodeAdddress)
+address = t(as.data.frame(address))
 
-
-
-
-commodity_information$Latitude=runif(nrow(commodity_information),-90, 90)
-commodity_information$Longitude=runif(nrow(commodity_information), -180, 180)
+commodity_information$Latitude=address[,2]
+commodity_information$Longitude=address[,1]
 
 #DATA FORMATTING  ##automate#################
 status= table(commodity_order$Destination.Country, commodity_order$Status)
@@ -113,7 +115,7 @@ m = leaflet(commodity_select) %>% addTiles()
 m %>% setView(lng = 25, lat = -10, zoom = 1) %>%
   addEasyButton(easyButton(
     icon="fa-globe", title="Zoom to World View",
-    onClick=JS("function(btn, map){ map.setZoom(1); }"))) %>%
+    onClick=JS("function(btn, map){ map.setZoom(2); }"))) %>%
   # Base groups
   addPolygons(stroke = FALSE, smoothFactor = 0.2, 
               fillOpacity = 1, color = ~pal(commodity_select$activity), 
