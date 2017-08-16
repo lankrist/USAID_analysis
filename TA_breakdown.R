@@ -8,6 +8,7 @@ setwd("/Documents/USAID_Internship2017")
 
 budget= read.csv(file = "dataset/financials/field_budget_TA_20170804.csv", header= T)
 names(budget)
+#read.csv(file = "supply_chain_management/ad-hoc/rtk201707/rtk_influence_visibility_graphs/visbility_influence.png")
 
 expense = read.csv(file = "dataset/financials/field_expense_TA_20170804.csv", header = T)
 names(expense)
@@ -28,8 +29,8 @@ expense$Financial.Report.Period=as.Date(as.character(expense$Financial.Report.Pe
 attach(expense)
 aggregate(Actual.Expense.This.Period~Country, FUN=sum)
 
-country_ = "Mozambique"
-year_ = "2016"
+country_ = "Angola"
+year_ = "2017"
 nat= expense[Country==country_,]
 
 #BLANK THEME
