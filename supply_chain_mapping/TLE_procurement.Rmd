@@ -26,7 +26,10 @@ Data sources: GHSC Eligible ARV Product List; PSM Order History; GitHub Mapping 
 
 ```{r echo=FALSE, warning=FALSE}
 #Set up dataset
-countries = geojson_read("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json", method = "local")
+
+countries <- readOGR("../supply_chain_mapping/countries.geo.json", "OGRGeoJSON")
+
+
 
 #commodity suppliers
 dat=read.csv(file = "http://www-personal.umich.edu/~lankrist//USAID GHSC Eligible ARV Product List (SHARED 28 JUL 2017).csv", stringsAsFactors = F)
@@ -114,7 +117,7 @@ commodity_order$Shipment.Method = as.factor(as.character(commodity_order$Shipmen
 
 #Status
 status= table(commodity_order$Destination.Country, commodity_order$Status)
-rownames(status)[!(rownames(status) %in% countries$ADMIN)]  #check
+rownames(status)[!(rownames(status) %in% countries$name)]  #check
 #convert to the same as geospatial data 
 status_=as.data.frame.matrix(status) #preserves matrix format
 status_c = status_[-1,]
@@ -128,20 +131,20 @@ temp = merge(coords, expense, by.x = "country", by.y = "Destination.Country")
 temp = merge(temp, cs, by = "country")
 
 #spaltialpolugondataframe ####consider utility of loading all information to single table
-commodity_select = merge(countries, temp, by.x= "ADMIN", by.y = "country")
 
-commodity_order$late = commodity_order$Agreed.Delivery.Date - commodity_order$Actual.Delivery.Date 
+late = commodity_order$Agreed.Delivery.Date - commodity_order$Actual.Delivery.Date 
 #unique(commodity_order$Status); class(commodity_order$late)
 #paste("Shipment Delivered:", sum(commodity_order$Status == "Shipment Delivered"))
 #paste("Cancelled:", sum(commodity_order$Status == "Cancelled"))
-commodity_late=as.data.frame.matrix(t(table(commodity_order$late > 0, commodity_order$Destination.Country)))
+commodity_late=as.data.frame.matrix(t(table(late > 0, commodity_order$Destination.Country)))
 commodity_late$country =rownames(commodity_late)
-colnames(commodity_late) = c("On time", "Late", "Destination.Country")
+colnames(commodity_late) = c("On time", "Late", "Country")
 
 #should merge with commodity_select
-commodity_select = merge(commodity_select, commodity_late, by.x = "ADMIN", 
-                         by.y = "Destination.Country")
+commodity_select = merge(temp, commodity_late, by.x = "country", 
+                         by.y = "Country")
 
+commodity_select =merge(countries, commodity_select, by.x = "name", by.y = "country")
 ```
 
 ```{r echo= FALSE, warning=FALSE}
@@ -196,7 +199,7 @@ m_ = m %>%
   # Base groups
   addPolygons(stroke = FALSE, smoothFactor = 0.2, 
               fillOpacity = 1, color = ~pal(commodity_select$activity), 
-              label = commodity_select$ADMIN,
+              label = commodity_select$name,
               popup = paste("Late Orders:", commodity_select$Late, "<br>",
                             "Expense:", print.money(commodity_select$Line.Total)),
               highlight = highlightOptions(
@@ -207,11 +210,12 @@ m_ = m %>%
               group = "Orders") %>%
   addLegend("bottomright", pal = pal, values = ~activity,
             title = "Number of Orders",
-            opacity = 1)%>%
-  #Overlay groups
-  addMarkers(data=commodity_information,lng = ~Longitude, lat= ~Latitude, 
-             popup = "Manufacturer", label = ~Supplier,  #include product recall inoformation, also market share
-             icon = drugIcons, group = "Manufacturer") 
+            opacity = 1)
+# %>%
+#   #Overlay groups
+#   addMarkers(data=commodity_information,lng = ~Longitude, lat= ~Latitude, 
+#              popup = "Manufacturer", label = ~Supplier,  #include product recall inoformation, also market share
+#              icon = drugIcons, group = "Manufacturer") 
 ```
 
 ```{r echo = FALSE, warning = FALSE}
@@ -234,9 +238,9 @@ ui = dashboardPage(title = "Order Lookup",
                    dashboardBody(
                      tabItems(
                        tabItem(tabName = "datavis",
-                               h4("Map and OrderS"),
+                               h4("Map and Orders"),
                                fluidRow(box(width = 12, leafletOutput("map")),
-                                        box(width = 12, tableOutput("table")))
+                                        box(width = 12, dataTableOutput("table")))
                        )
                      )
                    )
@@ -254,7 +258,7 @@ server <- function(input, output, session) {
     temp = temp[temp$Status != "Cancelled",]
   })
   
-  output$table <- renderTable(country_sub())
+  output$table <- renderDataTable(country_sub())
   
   output$map <- renderLeaflet({
     m_ %>%
