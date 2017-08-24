@@ -1,29 +1,48 @@
-#Map web browser practice
-library(magrittr)  #%>%  operator for pipe entry
-library(shiny) #for webapp
-library(leaflet) #for map interface
-library(rgdal) #country shapes
-library(RJSONIO) #function to convert address to coordinates
+---
+title: "TLE Procurement"
+author: "Kristine Lan"
+date: "2017/8/24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## TLE Procurement
+
+```{r include = FALSE}
+library(shiny)
+library(RJSONIO)
+library(magrittr)
+library(leaflet)
+library(rgdal)
 library(geojsonio)
 library(shinydashboard)
-suppressWarnings(library(ggplot2))
+library(rsconnect) #publish
+```
 
+Data sources: GHSC Eligible ARV Product List; PSM Order History; GitHub Mapping data(OGR).
 
-setwd("/Documents/USAID_Internship2017/supply_chain_management/")
-countries <- readOGR("../dataset/countries.geojson", "OGRGeoJSON")
+```{r echo=FALSE, warning=FALSE}
+#Set up dataset
+countries = geojson_read("https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json", method = "local")
 
 #commodity suppliers
-dat=read.csv(file = "../dataset/ARV/USAID GHSC Eligible ARV Product List (SHARED 28 JUL 2017).csv", stringsAsFactors = F)
-names(dat); commodity_list = unique(dat$Active.Ingredients); como=commodity_list[18]
+dat=read.csv(file = "http://www-personal.umich.edu/~lankrist//USAID GHSC Eligible ARV Product List (SHARED 28 JUL 2017).csv", stringsAsFactors = F)
+commodity_list = unique(dat$Active.Ingredients); como=commodity_list[18]
 
 #SELECT COMMODITY (will add in drop down menu, and set default commodity)
 commodity_information = dat[dat$Active.Ingredients==como, ]
 
-order = read.csv("../dataset/ARTMIS/RO_history_20170809.csv")
+order = read.csv("http://www-personal.umich.edu/~lankrist//RO_history_20170809.csv")
 commodity_order=order[grepl("Efavirenz/Lamivudine/Tenofovir", order$Item.Description),]
 
-# budget and expense
+```
 
+GoogleMaps API provides map coordinates.
+
+```{r echo=FALSE, warning=FALSE}
 #GEOLOCATIONS for "static" data i.e. supplier location
 commodity_information$FPP.Manufacturing.Site = gsub("\n"," ",commodity_information$FPP.Manufacturing.Site)
 geocodeAdddress <- function(address) {
@@ -53,16 +72,11 @@ address = t(as.data.frame(address))
 
 commodity_information$Latitude=address[,2]; commodity_information$Longitude=address[,1]
 
-#Deal with country naming here Conversions
-commodity_order$Destination.Country = as.character(commodity_order$Destination.Country); unique(commodity_order$Destination.Country)
-countries[grepl("Cote d'Ivoire", countries$ADMIN),]$ADMIN #checking: called Ivory Coast
-# country_name_change = function(original, changed){
-#   commodity_order[grepl(original,commodity_order$Destination.Country),
-#                   "Destination.Country"] = changed
-# }
-#country_name_change("Congo DRC", "Democratic Republic of the Congo")
-#is the function pass by refernce of pass by value, this function changes the data frame
+```
 
+``` {r echo = FALSE , warning = FALSE}
+  #Deal with country naming here Conversions
+commodity_order$Destination.Country = as.character(commodity_order$Destination.Country)
 commodity_order[grepl("C?te d'Ivoire",commodity_order$Destination.Country),
                 "Destination.Country"] = "Ivory Coast"
 commodity_order[grepl("Congo DRC",commodity_order$Destination.Country),
@@ -93,12 +107,10 @@ fact_to_num = function(fact_val){
 commodity_order$Line.Total= fact_to_num(commodity_order$Line.Total)
 
 #Shipment method
-levels(commodity_order$Shipment.Method)
 commodity_order[grepl("AIR", commodity_order$Shipment.Method), "Shipment.Method"] = "Air"
 commodity_order[grepl("LAND", commodity_order$Shipment.Method), "Shipment.Method"] = "Land"
 commodity_order[grepl("SEA", commodity_order$Shipment.Method), "Shipment.Method"] = "Sea"
-commodity_order$Shipment.Method = as.factor(as.character(commodity_order$Shipment.Method)) 
-levels(commodity_order$Shipment.Method)
+commodity_order$Shipment.Method = as.factor(as.character(commodity_order$Shipment.Method))
 
 #Status
 status= table(commodity_order$Destination.Country, commodity_order$Status)
@@ -125,15 +137,14 @@ commodity_order$late = commodity_order$Agreed.Delivery.Date - commodity_order$Ac
 commodity_late=as.data.frame.matrix(t(table(commodity_order$late > 0, commodity_order$Destination.Country)))
 commodity_late$country =rownames(commodity_late)
 colnames(commodity_late) = c("On time", "Late", "Destination.Country")
-plot(commodity_late$Late)
 
 #should merge with commodity_select
 commodity_select = merge(commodity_select, commodity_late, by.x = "ADMIN", 
                          by.y = "Destination.Country")
 
-comor = c("RO.", "Destination.Country", "Product.Category", "Item.Description", 
-          "Status", "Ordered.Quantity", "Line.Total", "Agreed.Delivery.Date" )
+```
 
+```{r echo= FALSE, warning=FALSE}
 #MAP ATTRIBUTES
 #ICONS
 supplier = unique(commodity_information$Supplier)
@@ -162,6 +173,11 @@ drugIcons = icons(
 pal <- colorNumeric(
   palette = "Blues",
   domain = commodity_select$activity)
+```
+
+``` {r echo = FALSE, warning = FALSE}
+comor = c("RO.", "Destination.Country", "Product.Category", "Item.Description",
+          "Status", "Ordered.Quantity", "Line.Total", "Agreed.Delivery.Date" )
 
 #MAP
 print.money <- function(x, ...) {
@@ -196,12 +212,9 @@ m_ = m %>%
   addMarkers(data=commodity_information,lng = ~Longitude, lat= ~Latitude, 
              popup = "Manufacturer", label = ~Supplier,  #include product recall inoformation, also market share
              icon = drugIcons, group = "Manufacturer") 
-  # addMarkers(popup = "Image", 
-  #             group = "Expense") %>%
-  
+```
 
-
-#Shiny
+```{r echo = FALSE, warning = FALSE}
 r_colors <- rgb(t(col2rgb(colors()) / 255))
 names(r_colors) <- colors()
 
@@ -221,7 +234,7 @@ ui = dashboardPage(title = "Order Lookup",
                    dashboardBody(
                      tabItems(
                        tabItem(tabName = "datavis",
-                               h4("Map and Order"),
+                               h4("Map and OrderS"),
                                fluidRow(box(width = 12, leafletOutput("map")),
                                         box(width = 12, tableOutput("table")))
                        )
@@ -256,21 +269,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
