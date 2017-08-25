@@ -1,4 +1,5 @@
-#Lopinavir+Ritonavir
+#ARV dashboard Late Orders
+#Kristine Lan
 
 library(shiny)
 library(RJSONIO)
@@ -7,7 +8,7 @@ library(leaflet)
 library(rgdal)
 library(geojsonio)
 library(shinydashboard)
-
+library(htmlwidgets) #onRender()
 
 #Set up dataset
 setwd("/Documents/USAID_Internship2017/supply_chain_management/")
@@ -16,6 +17,7 @@ countries <- readOGR("../dataset/countries.geojson", "OGRGeoJSON")
 order = read.csv("../dataset/ARTMIS/RO_history_20170824.csv")
 commodity_order=order[order$Product.Category == "HIV/AIDS Pharmaceuticals",]
 
+#Functions
 #GEOLOCATIONS function
 geocodeAdddress <- function(address) {
   require(RJSONIO)
@@ -31,6 +33,20 @@ geocodeAdddress <- function(address) {
   Sys.sleep(0.2)  # API only allows 5 requests per second
   out
 }
+#convert factor to date function
+fact_to_date = function(fact_val){
+  return(as.Date(as.character(fact_val), format = "%Y/%m/%d"))
+}
+#convert factor to numeric function
+fact_to_num = function(fact_val){
+  return(as.numeric(gsub(",","",as.character(fact_val))))
+}
+#trim leading spaces
+trim.leading <- function (x)  sub("^\\s+", "", x)
+#trim trailing spaces
+trim.trailing <- function (x) sub("\\s+$", "", x)
+#trim spaces for leading and traling
+trim <- function (x) gsub("^\\s+|\\s+$", "", x)
 
 #Deal with country naming here Conversions
 commodity_order$Destination.Country = as.character(commodity_order$Destination.Country)
@@ -38,34 +54,26 @@ commodity_order[grepl("United States",commodity_order$Destination.Country),
                 "Destination.Country"] = "United States of America"
 unique(commodity_order$Destination.Country) %in% countries$ADMIN
 
-#DATA FORMATTING  ##automate#################
-#Geolocations ///////////////////////////////////////////////////////
-#excludes empty string NOTE: there are orders with no destination country
+#DATA FORMATTING 
+#Values
+#Geolocations 
+#NOTE: there are orders with no destination country
 corder = unique(commodity_order$Destination.Country)[unique(commodity_order$Destination.Country)!= ""]
 coords = as.data.frame(t(sapply(corder, geocodeAdddress)))
 coords$country = rownames(coords); colnames(coords) = c("long", "lat", "country" )
 
 #Converting factors to order dates
-fact_to_date = function(fact_val){
-  return(as.Date(as.character(fact_val), format = "%Y/%m/%d"))
-}
 commodity_order[,c(13:17)] = as.data.frame(lapply(commodity_order[,c(13:17)], 
                                                   fact_to_date))
 
 #Converting factors to numerics
-fact_to_num = function(fact_val){
-  return(as.numeric(gsub(",","",as.character(fact_val))))
-}
 commodity_order[,c(18:22)] = as.data.frame(lapply(commodity_order[,c(18:22)], 
                                                   fact_to_num))
 
+#Shipment method should be of 4 types: land, air, sea, ""
+commodity_order$Shipment.Method = as.factor(trim(toupper(commodity_order$Shipment.Method)))
 
-#Shipment method
-commodity_order[grepl("AIR", commodity_order$Shipment.Method), "Shipment.Method"] = "Air"
-commodity_order[grepl("LAND", commodity_order$Shipment.Method), "Shipment.Method"] = "Land"
-commodity_order[grepl("SEA", commodity_order$Shipment.Method), "Shipment.Method"] = "Sea"
-commodity_order$Shipment.Method = as.factor(as.character(commodity_order$Shipment.Method))
-
+#Data frame
 #Status
 status= table(commodity_order$Destination.Country, commodity_order$Status)
 rownames(status)[!(rownames(status) %in% countries$name)]  #check
@@ -75,11 +83,12 @@ cs = as.data.frame(rowSums(status))
 cs$country = rownames(cs); colnames(cs)[1] = "Orders"
 
 #Expense
-expense = aggregate(Line.Total ~Destination.Country, data = commodity_order, sum)
+expense = aggregate((Unit.Cost*Shipped.Quantity) ~Destination.Country, data = commodity_order, sum)
 
 #Merging
 temp = merge(coords, expense, by.x = "country", by.y = "Destination.Country")
 temp = merge(temp, cs, by = "country")
+colnames(temp)[4] = "Cost.Product.Shipped"
 
 late = commodity_order$Actual.Delivery.Date - commodity_order$Agreed.Delivery.Date 
 #unique(commodity_order$Status); class(commodity_order$late)
@@ -126,13 +135,13 @@ m = leaflet(com) %>% addTiles() %>%
 
 m_ = m %>%
   # Base groups
-  addPolygons(stroke = FALSE, smoothFactor = 0.2, 
+  addPolygons(stroke = FALSE, smoothFactor = 0.2, weight = 1,
               fillOpacity = 1, color = ~pal(Late), 
               label = ~ADMIN,
               popup = paste("Late Orders:", com$Late, "<br>",
                             "Average Number of Days Late:", 
                             round(as.numeric(com$AvgLateDays),1), "days<br>",
-                            "Expense:", print.money(com$Line.Total)),
+                            "Expense of Commodities Arrived:", print.money(com$Cost.Product.Shipped)),
               highlight = highlightOptions(
                 weight = 5,
                 color = "#888",
@@ -156,18 +165,21 @@ ui = dashboardPage(title = "Order Lookup",
                        menuItem("Select Country", icon = icon("map"),
                                 selectizeInput("country", "Click on Country", 
                                                choices = commodity_order$Destination.Country, 
-                                               multiple = TRUE)),
+                                               #selected = commodity_order$Destination.Country),
+                                               multiple = TRUE 
+                                               )),
                        menuItem("Select Product", icon = icon("search"),
                                 selectizeInput("product", "Click on Product",
                                                choices = commodity_order$Item.Description,
+                                               #selected = commodity_order$Item.Description,
                                                multiple = T)),
                        sliderInput("time_range","Timeframe:",
                                    min = min(as.Date(commodity_order$Order.Entry.Date, "%Y/%m/%d")), 
                                    max = max(as.Date(commodity_order$Order.Entry.Date, "%Y/%m/%d")), 
                                    value = c(as.Date("2016-01-01", "%Y/%m/%d"),
                                              Sys.Date()))
-                       ///////////////////////////////////
-                         //////////////////////////////// should also affect map and table
+                       # ///////////////////////////////////
+                       #   //////////////////////////////// should also affect map and table
                        
                      )
                    ),
@@ -176,6 +188,7 @@ ui = dashboardPage(title = "Order Lookup",
                        tabItem(tabName = "datavis",
                                h4("Map and Orders"),
                                fluidRow(box(width = 12, leafletOutput("map")),
+                                        #is product_map necessary, it will be out put at same box
                                         box(width = 12, dataTableOutput("table")))
                        )
                      )
@@ -187,22 +200,21 @@ server <- function(input, output, session) {
   
   country_sub <- reactive({
     temp = commodity_order[commodity_order$Destination.Country %in% input$country,comor]
+    #temp = temp[temp$Destination.Country %in% input$product,]
     colnames(temp) = c("RO#", "Country", "Category", "Product", "Status", 
                        "Shipped Quantity", "RO Total Cost", "Agreed Delivery Date", 
                        "Actual Delivery Date")
     temp$`RO Total Cost` = print.money(temp$`RO Total Cost`)
-    #temp$`Agreed Delivery Date` = as.factor(temp$`Agreed Delivery Date`)
     subset(temp, temp$Status != "Cancelled") 
     
   })
   
-  #does order matter with country_sun and product_sub???
+  #does order matter with country_sub and product_sub???
   product_sub = reactive({
-    commodity_order[commodity_order$Item.Description %in% input$product,]
-    /////////////////////////////////////
-      ///////////////////////////// should change map and table
-      //////////////////////////////
-      //////////////////////////////
+    comp = commodity_select[commodity_select$Item.Description %in% input$product,]
+    merge(countries, comp, by.x = "ADMIN", by.y = "country")
+    # /////////////////////////////////////
+    #   ///////////////////////////// should change map and table
   })
   
   output$table <- renderDataTable(country_sub(), 
@@ -211,15 +223,34 @@ server <- function(input, output, session) {
   
   output$map <- renderLeaflet({
     m_ %>%
-      /////////////////////////////Overlay product specific map
-      ///////////////////////////
-      //////////////////////////
+      addPolygons(data= product_sub(), stroke = FALSE, smoothFactor = 0.2,
+                  fillOpacity = 1, color = ~pal(Late),
+                  label = ~ADMIN,
+                  # popup = paste("Late Orders:", product_sub$Late, "<br>",
+                  #               "Average Number of Days Late:", 
+                  #               round(as.numeric(product_sub$AvgLateDays),1), "days<br>",
+                  #               "Expense:", print.money(product_sub$Cost.Product.Shipped)),
+                  group = "Product")%>%
       # Layers control
       addLayersControl(
         baseGroups = c("Orders"),
         overlayGroups = c("Product"),
-        options = layersControlOptions(collapsed = FALSE)
-      )
+        options = layersControlOptions(collapsed = FALSE))%>%
+      addControl(html="<input id=\"slide\" type=\"range\" min=\"0\" max=\"1\" step=\"0.1\" value=\"1\">",
+                 position = "bottomleft") %>%
+      onRender("
+        function(el,x,data){
+          var map = this;
+          var evthandler = function(e){
+            var labels = map.layerManager._byGroup.Product;
+            Object.keys(labels).forEach(function(el){
+              labels[el]._container.style.opacity = +e.target.value;
+            });
+          };
+          $('#slide').on('mousemove',L.DomEvent.stopPropagation);
+          $('#slide').on('input', evthandler);
+        }
+               ")
     
   })
 }
