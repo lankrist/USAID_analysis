@@ -47,6 +47,10 @@ trim.leading <- function (x)  sub("^\\s+", "", x)
 trim.trailing <- function (x) sub("\\s+$", "", x)
 #trim spaces for leading and traling
 trim <- function (x) gsub("^\\s+|\\s+$", "", x)
+#Money print out format
+print.money <- function(x, ...) {
+  paste0("$", formatC(as.numeric(x), format="f", digits=2, big.mark=","))
+}
 
 #Deal with country naming here Conversions
 commodity_order$Destination.Country = as.character(commodity_order$Destination.Country)
@@ -121,11 +125,6 @@ comor = c("RO.", "Destination.Country", "Product.Category", "Item.Description",
           "Actual.Delivery.Date" )
 
 #MAP
-print.money <- function(x, ...) {
-  paste0("$", formatC(as.numeric(x), format="f", digits=2, big.mark=","))
-}
-
-
 #need to work on popuplinks
 m = leaflet(com) %>% addTiles() %>% 
   setView(lng = 25, lat = -2, zoom = 2.5) %>%
@@ -141,7 +140,8 @@ m_ = m %>%
               popup = paste("Late Orders:", com$Late, "<br>",
                             "Average Number of Days Late:", 
                             round(as.numeric(com$AvgLateDays),1), "days<br>",
-                            "Expense of Commodities Arrived:", print.money(com$Cost.Product.Shipped)),
+                            "Expense of Commodities Arrived:", 
+                            print.money(com$Cost.Product.Shipped)),
               highlight = highlightOptions(
                 weight = 5,
                 color = "#888",
@@ -151,10 +151,6 @@ m_ = m %>%
   addLegend("bottomright", pal = pal, values = ~Late,
             title = "Number of Late Orders",
             opacity = 1)
-
-
-r_colors <- rgb(t(col2rgb(colors()) / 255))
-names(r_colors) <- colors()
 
 
 ui = dashboardPage(title = "Order Lookup",
@@ -178,7 +174,6 @@ ui = dashboardPage(title = "Order Lookup",
                                    max = max(as.Date(commodity_order$Order.Entry.Date, "%Y/%m/%d")), 
                                    value = c(as.Date("2016-01-01", "%Y/%m/%d"),
                                              Sys.Date()))
-                       # ///////////////////////////////////
                        #   //////////////////////////////// should also affect map and table
                        
                      )
