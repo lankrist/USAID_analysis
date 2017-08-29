@@ -17,7 +17,7 @@ countries <- readOGR("../dataset/countries.geojson", "OGRGeoJSON")
 order = read.csv("../dataset/ARTMIS/RO_history_20170824.csv")
 comor = c("RO.", "Destination.Country", "Product.Category", "Item.Description",
           "Status", "Shipped.Quantity", "Unit.Cost", "Agreed.Delivery.Date", 
-          "Actual.Delivery.Date", "Order.Entry.Date")
+          "Actual.Delivery.Date")
 
 commodity_order=order[,comor]
 commodity_order= subset(commodity_order, commodity_order$Status != "Cancelled")
@@ -65,12 +65,17 @@ commodity_order[grepl("United States",commodity_order$Destination.Country),
 
 #DATA FORMATTING 
 #Converting factors to order dates
-commodity_order[,c(8:10)] = as.data.frame(lapply(commodity_order[,c(8:10)], 
+commodity_order[,c(8:9)] = as.data.frame(lapply(commodity_order[,c(8:9)], 
                                                   fact_to_date))
 
 #Converting factors to numerics
 commodity_order[,c(6:7)] = as.data.frame(lapply(commodity_order[,c(6:7)], 
                                                   fact_to_num))
+
+#Product names
+commodity_order$Item.Description = as.factor(gsub("\\s*\\[[^\\)]+\\]","",
+                                                  as.character(commodity_order$Item.Description)))
+#will need to b editted
 
 #Shipment method should be of 4 types: land, air, sea, ""
 ##possible expansion
@@ -85,45 +90,16 @@ commodity_order[,c(6:7)] = as.data.frame(lapply(commodity_order[,c(6:7)],
 # coords$country = rownames(coords) 
 # colnames(coords) = c("long", "lat", "country" )
 
-#Shipment order count
-order_count = as.data.frame(table(commodity_order$Destination.Country))
-colnames(order_count) = c("country", "Shipment Orders")
-
-#Expense
-expense = aggregate((Unit.Cost*Shipped.Quantity) ~Destination.Country, data = commodity_order, sum)
-colnames(expense)= c("country","Cost.Product.Shipped")
-
-#Late
-lateDays = commodity_order$Actual.Delivery.Date - commodity_order$Agreed.Delivery.Date 
-commodity_late=as.data.frame.matrix(t(table(lateDays > 7, commodity_order$Destination.Country)))
-colnames(commodity_late) = c("country", "Late") # Orders with no dates generates NA
-commodity_late$country = rownames(commodity_late)
-AvglateDays = aggregate(lateDays~Destination.Country,commodity_order, mean)
-commodity_late = merge(commodity_late, AvglateDays, by.x = "country", by.y = "Destination.Country")
-colnames(commodity_late)[3] = "AvgLateDays"
-
-#MERGE
-temp = Reduce(function(x, y) merge(x, y, all=TRUE), list(order_count, expense, commodity_late))
-
-com =merge(countries, temp, by.x = "ADMIN", by.y = "country")
 
 #MAP ATTRIBUTES
 #ICONS
 
-
-#PALETTE
 pal <- colorNumeric(
-  palette = "Blues",
-  domain = com$Late)
+  palette = "YlOrRd",
+  domain = c(0,300))
 
 
-#MAP
-m = leaflet(com) %>% addTiles() %>% 
-  setView(lng = 25, lat = -2, zoom = 3) %>%
-  addEasyButton(easyButton(
-    icon="fa-globe", title="Zoom to World View",
-    onClick=JS("function(btn, map){ map.setZoom(2); }")))
-
+#MAPPING
 
 ui = dashboardPage(title = "Order Lookup",
                    dashboardHeader(title = "Commodity Procurement Orders"),
@@ -135,22 +111,24 @@ ui = dashboardPage(title = "Order Lookup",
                                                choices = commodity_order$Destination.Country, 
                                                multiple = TRUE )),
                        # menuItem("Select Product Category", icon = icon("search"),
-                       #          selectizeInput("product_cat", "Click on Category",
-                       #                         choices = commodity_order$Product.category,
+                       #          selectizeInput("product_cat", "Select Category",
+                       #                         choices = commodity_order$Product.Category,
                        #                         multiple = T)),
                        menuItem("Select Product", icon = icon("search"),
-                                selectizeInput("product", "Click on Product",
+                                selectizeInput("product", "Select Product",
                                                choices = commodity_order$Item.Description,
                                                multiple = T)),
-                       sliderInput("integer", "Number of Days Late:",
+                       menuItem("Select Status", icon = icon("tasks"),
+                                selectizeInput("status", "Select Status",
+                                               choices = commodity_order$Status,
+                                               multiple = T)),
+                       sliderInput("late_cut", "Number of Days Late:",
                                    min=0, max=90, value=7),
                        sliderInput("time_range","Timeframe:",
-                                   min = min(as.Date(commodity_order$Order.Entry.Date, "%Y/%m/%d")), 
-                                   max = max(as.Date(commodity_order$Order.Entry.Date, "%Y/%m/%d")), 
-                                   value = c(as.Date("2016-01-01", "%Y/%m/%d"),
+                                   min = as.Date("2015-01-01"), 
+                                   max = Sys.Date(), 
+                                   value = c(as.Date("2015-01-01"),
                                              Sys.Date()))
-                       #   //////////////////////////////// should also affect map and table
-                       
                      )
                    ),
                    dashboardBody(
@@ -169,43 +147,96 @@ ui = dashboardPage(title = "Order Lookup",
 server <- function(input, output, session) {
   
   sub <- reactive({
-    temp= commodity_order[,-10]
+    temp= commodity_order
     # if (!is.null(input$time_range)){ #filter by entry date
-    #   temp = temp[temp$Order.Entry.Date > input$time_range,]
+    #   temp = temp[temp$Order.Entry.Date < input$time_range[1],]
+    #   temp = temp[temp$Order.Entry.Date > input$time_range[2],]
     # }
+    if (!is.null(input$status)){ #filter by country
+      temp = temp[temp$Status %in% input$status,]
+    }
     if (!is.null(input$country)){ #filter by country
       temp = temp[temp$Destination.Country %in% input$country,]
     }
-    if (!is.null(input$product)){ #filter by product
+    if (!is.null(input$product)){ #filter by product, product should be affected by category
       temp = temp[temp$Item.Description %in% input$product,]
     }
-    
-    temp$Unit.Cost = temp$Unit.Cost*temp$Shipped.Quantity
-    colnames(temp) = c("RO#", "Country", "Category", "Product", "Status", 
-                       "Shipped Quantity", "RO Total Cost", "Agreed Delivery Date", 
-                       "Actual Delivery Date")
-    temp$`RO Total Cost` = print.money(temp$`RO Total Cost`)
-    
-    #subset(temp, temp$Status != "Cancelled")
     return(temp)
   })
   
-  #map values need to change: define other reactive fuction?
   
-  output$table <- renderDataTable(sub(), 
-                                  options = list(scrollX = TRUE))
+  map_out = reactive({ #will output the spatialpolygonsdataframe
+    
+    comods = commodity_order #filter by product and late days
+    
+    if (!is.null(input$product)){ #filter by product, product should be affected by category
+      comods = comods[comods$Item.Description %in% input$product,]
+    }
+
+    #Shipment order count
+    order_count = as.data.frame(table(comods$Destination.Country))
+    colnames(order_count) = c("country", "Shipment Orders")
+
+    #Expense
+    expense = aggregate((Unit.Cost*Shipped.Quantity)~Destination.Country, data = comods, sum)
+    colnames(expense)= c("country","Cost.Product.Shipped")
+
+    #Late
+    lateDays = comods$Actual.Delivery.Date - comods$Agreed.Delivery.Date
+    commodity_late=as.data.frame.matrix(t(table(lateDays > input$late_cut, comods$Destination.Country)))
+    colnames(commodity_late)[colnames(commodity_late) == "TRUE"] = "Late"
+    commodity_late$country = rownames(commodity_late)
+    AvglateDays = aggregate(lateDays~Destination.Country,comods, mean)
+    commodity_late = merge(commodity_late, AvglateDays, by.x = "country", by.y = "Destination.Country")
+    colnames(commodity_late)[colnames(commodity_late) == "lateDays"] = "AvgLateDays"
+
+    #MERGE
+    temp = Reduce(function(x, y) merge(x, y, all=TRUE), list(order_count, expense, commodity_late))
+    com = merge(countries, temp, by.x = "ADMIN", by.y = "country")
+
+    return(com)
+  })
+  
+  # #Pallete
+  # pal <- reactive({
+  #   compal = commodity_order #filter by product and late days
+  #   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+  #   if (!is.null(input$product)){ #duplicate code!!!!!!!!!!!!!!
+  #     compal = compal[compal$Item.Description %in% input$product,]
+  #   }
+  #   
+  #   pal_ <- colorNumeric(
+  #     palette = "Blues",
+  #     domain = c(0,nrow(compal)))
+  #   return(pal_)
+  # }) 
+  
+  output$table <- renderDataTable({
+    orders = sub()
+    orders$Unit.Cost = orders$Unit.Cost*orders$Shipped.Quantity
+    colnames(orders) = c("RO#", "Country", "Category", "Product", "Status",
+                      "Shipped Quantity", "RO Total Cost", "Agreed Delivery Date",
+                      "Actual Delivery Date")
+    orders$`RO Total Cost` = print.money(orders$`RO Total Cost`)
+    orders}, 
+    options = list(scrollX = TRUE))
                                   #datatable width changes with window size
   
   output$map <- renderLeaflet({
-    m%>%
+    com = map_out()
+    leaflet(com) %>% addTiles() %>%
+      setView(lng = 25, lat = -2, zoom = 3) %>%
+      addEasyButton(easyButton(
+        icon="fa-globe", title="Zoom to World View",
+        onClick=JS("function(btn, map){ map.setZoom(2); }")))%>%
         # Base groups
       addPolygons(stroke = FALSE, smoothFactor = 0.2, weight = 1,
-                  fillOpacity = 1, color = ~pal(Late), 
+                  fillOpacity = 1, color = ~pal(Late),
                   label = ~ADMIN,
                   popup = paste("Late Orders:", com$Late, "<br>",
-                                  "Average Number of Days Late:", 
+                                  "Average Number of Days Late:",
                                   round(as.numeric(com$AvgLateDays),1), "days<br>",
-                                  "Expense of Commodities Arrived:", 
+                                  "Value of Commodities Arrived:",
                                   print.money(com$Cost.Product.Shipped)),
                   highlight = highlightOptions(
                     weight = 5,
@@ -217,11 +248,11 @@ server <- function(input, output, session) {
       #             fillOpacity = 1, color = ~pal(Late),
       #             label = ~ADMIN,
       #             group = "Warehouse")%>%
-      
+
       addLegend("bottomright", pal = pal, values = ~Late,
-                title = "Number of Late Orders",
+                title = "Number of Late Shipments",
                 opacity = 1)%>%
-      
+
       # Layers control
       addLayersControl(
         baseGroups = c("Orders"),
@@ -241,9 +272,9 @@ server <- function(input, output, session) {
           $('#slide').on('mousemove',L.DomEvent.stopPropagation);
           $('#slide').on('input', evthandler);
         }
-               ") 
-      
-    
+               ")
+
+
   })
 }
 
