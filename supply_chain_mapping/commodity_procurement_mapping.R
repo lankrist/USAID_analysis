@@ -67,10 +67,12 @@ commodity_order[grepl("United States",commodity_order$Destination.Country),
 #Converting factors to order dates
 commodity_order[,c(8:9)] = as.data.frame(lapply(commodity_order[,c(8:9)], 
                                                   fact_to_date))
+commodity_order$lateDays = commodity_order$Actual.Delivery.Date - commodity_order$Agreed.Delivery.Date
 
 #Converting factors to numerics
 commodity_order[,c(6:7)] = as.data.frame(lapply(commodity_order[,c(6:7)], 
                                                   fact_to_num))
+
 
 #Product names
 commodity_order$Item.Description = as.factor(gsub("\\s*\\[[^\\)]+\\]","",
@@ -94,6 +96,7 @@ commodity_order$Item.Description = as.factor(gsub("\\s*\\[[^\\)]+\\]","",
 #MAP ATTRIBUTES
 #ICONS
 
+#PALLETTE
 pal <- colorNumeric(
   palette = "YlOrRd",
   domain = c(0,300))
@@ -118,17 +121,26 @@ ui = dashboardPage(title = "Order Lookup",
                                 selectizeInput("product", "Select Product",
                                                choices = commodity_order$Item.Description,
                                                multiple = T)),
-                       menuItem("Select Status", icon = icon("tasks"),
-                                selectizeInput("status", "Select Status",
-                                               choices = commodity_order$Status,
-                                               multiple = T)),
+                       # menuItem("Select Status", icon = icon("tasks"),
+                       #          selectizeInput("status", "Select Status",
+                       #                         choices = commodity_order$Status,
+                       #                         multiple = T)),
                        sliderInput("late_cut", "Number of Days Late:",
                                    min=0, max=90, value=7),
                        sliderInput("time_range","Timeframe:",
                                    min = as.Date("2015-01-01"), 
                                    max = Sys.Date(), 
                                    value = c(as.Date("2015-01-01"),
-                                             Sys.Date()))
+                                             Sys.Date())),
+                       checkboxGroupInput("status_filters", "Order Status:",
+                                         choices = c("Late" = "late_order",
+                                           "On time" = "on_time",
+                                           "Processing" = "processing",
+                                           "Other" = "other"),
+                                         selected = c("Late" = "late_order",
+                                                      "On time" = "on_time",
+                                                      "Processing" = "processing",
+                                                      "Other" = "other"))
                      )
                    ),
                    dashboardBody(
@@ -136,7 +148,6 @@ ui = dashboardPage(title = "Order Lookup",
                        tabItem(tabName = "datavis",
                                h4("Map and Orders"),
                                fluidRow(box(width = 12, leafletOutput("map")),
-                                        #is product_map necessary, it will be out put at same box
                                         box(width = 12, dataTableOutput("table")))
                        )
                      )
@@ -146,21 +157,36 @@ ui = dashboardPage(title = "Order Lookup",
 
 server <- function(input, output, session) {
   
-  sub <- reactive({
+  tab_out <- reactive({
     temp= commodity_order
     # if (!is.null(input$time_range)){ #filter by entry date
     #   temp = temp[temp$Order.Entry.Date < input$time_range[1],]
     #   temp = temp[temp$Order.Entry.Date > input$time_range[2],]
     # }
-    if (!is.null(input$status)){ #filter by country
-      temp = temp[temp$Status %in% input$status,]
-    }
+    
+    # if (!is.null(input$status)){ #filter by country
+    #   temp = temp[temp$Status %in% input$status,]
+    # }
     if (!is.null(input$country)){ #filter by country
       temp = temp[temp$Destination.Country %in% input$country,]
     }
     if (!is.null(input$product)){ #filter by product, product should be affected by category
       temp = temp[temp$Item.Description %in% input$product,]
     }
+    
+    {#Status that interests the country backstop
+    temp$status_filter = "Other"
+    temp[!is.na(temp$Agreed.Delivery.Date), "status_filter"] = "Processing"
+    temp[!is.na(temp$Actual.Delivery.Date) &
+           temp$status_filter == "Processing", "status_filter"] = "On time"
+    temp[temp$status_filter == "On time" &
+            temp$lateDays > input$late_cut, "status_filter"] = "Late"
+    # if (!is.na(input$status_filters)){
+    #   temp = temp[temp$status_filter %in% input$status_filters,]
+    #   }
+    
+    }
+    
     return(temp)
   })
   
@@ -182,8 +208,7 @@ server <- function(input, output, session) {
     colnames(expense)= c("country","Cost.Product.Shipped")
 
     #Late
-    lateDays = comods$Actual.Delivery.Date - comods$Agreed.Delivery.Date
-    commodity_late=as.data.frame.matrix(t(table(lateDays > input$late_cut, comods$Destination.Country)))
+    commodity_late=as.data.frame.matrix(t(table(comods$lateDays > input$late_cut, comods$Destination.Country)))
     colnames(commodity_late)[colnames(commodity_late) == "TRUE"] = "Late"
     commodity_late$country = rownames(commodity_late)
     AvglateDays = aggregate(lateDays~Destination.Country,comods, mean)
@@ -197,28 +222,15 @@ server <- function(input, output, session) {
     return(com)
   })
   
-  # #Pallete
-  # pal <- reactive({
-  #   compal = commodity_order #filter by product and late days
-  #   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
-  #   if (!is.null(input$product)){ #duplicate code!!!!!!!!!!!!!!
-  #     compal = compal[compal$Item.Description %in% input$product,]
-  #   }
-  #   
-  #   pal_ <- colorNumeric(
-  #     palette = "Blues",
-  #     domain = c(0,nrow(compal)))
-  #   return(pal_)
-  # }) 
   
   output$table <- renderDataTable({
-    orders = sub()
+    orders = tab_out()
     orders$Unit.Cost = orders$Unit.Cost*orders$Shipped.Quantity
     colnames(orders) = c("RO#", "Country", "Category", "Product", "Status",
                       "Shipped Quantity", "RO Total Cost", "Agreed Delivery Date",
-                      "Actual Delivery Date")
+                      "Actual Delivery Date", "Late days","Status_filter")
     orders$`RO Total Cost` = print.money(orders$`RO Total Cost`)
-    orders}, 
+    orders},  #hid Late days and Status_filter in final prodcut
     options = list(scrollX = TRUE))
                                   #datatable width changes with window size
   
@@ -233,7 +245,7 @@ server <- function(input, output, session) {
       addPolygons(stroke = FALSE, smoothFactor = 0.2, weight = 1,
                   fillOpacity = 1, color = ~pal(Late),
                   label = ~ADMIN,
-                  popup = paste("Late Orders:", com$Late, "<br>",
+                  popup = paste("Late Shipments:", com$Late, "<br>",
                                   "Average Number of Days Late:",
                                   round(as.numeric(com$AvgLateDays),1), "days<br>",
                                   "Value of Commodities Arrived:",
